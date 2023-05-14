@@ -3,6 +3,7 @@ from random import choice
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.shortcuts import get_object_or_404
+from loguru import logger
 from payments.models import Account, Transaction
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
@@ -44,6 +45,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        logger.debug(f'Registering user {validated_data["username"]}')
+
         user = User.objects.create(
             username=validated_data["username"],
             email=validated_data["email"],
@@ -54,10 +57,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.set_password(validated_data["password"])
         user.save()
 
+        logger.debug(f"Registered succesfully!")
+
         return user
 
 
-class UserSerializer(serializers.HyperlinkedModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     accounts = serializers.PrimaryKeyRelatedField(many=True, queryset=Account.objects.all())
 
     class Meta:
@@ -79,27 +84,3 @@ class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
         fields = ["id", "account", "recipient", "amount", "date"]
-
-    def create(self, validated_data):
-        account = validated_data["account"]
-        recipient_id = validated_data["recipient"]
-        amount = validated_data["amount"]
-        sender = get_object_or_404(Account, pk=account.id)
-        recipient = get_object_or_404(Account, id=recipient_id)
-
-        if sender.balance - amount < 0:
-            raise serializers.ValidationError("Too much amount! Can't create a transaction!")
-
-        sender.balance -= amount
-        recipient.balance += amount
-
-        sender.save()
-        recipient.save()
-
-        transaction = Transaction.objects.create(
-            account=account, recipient=recipient_id, amount=validated_data["amount"]
-        )
-
-        transaction.save()
-
-        return transaction
